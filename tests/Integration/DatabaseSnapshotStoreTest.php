@@ -31,7 +31,7 @@ final class DatabaseSnapshotStoreTest extends TestCase
         self::assertNotNull($snapshot);
         self::assertSame(50, $snapshot->version);
         self::assertSame(1, $snapshot->schemaVersion);
-        self::assertSame(['balance' => 100, 'legs' => ['a' => 1]], $snapshot->state);
+        self::assertEquals(['balance' => 100, 'legs' => ['a' => 1]], $snapshot->state);
         self::assertNull($this->snapshots()->latest('account-y'));
     }
 

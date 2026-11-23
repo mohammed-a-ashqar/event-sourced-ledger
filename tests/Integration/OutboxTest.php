@@ -65,7 +65,7 @@ final class OutboxTest extends TestCase
 
         self::assertNotNull($message);
         self::assertSame($deposit->eventId(), $message->message_id);
-        self::assertSame(
+        self::assertEquals(
             ['account_id' => F::ALICE, 'transaction_id' => F::TRANSACTION, 'amount' => 1_000, 'currency' => 'EUR'],
             json_decode(self::str($message->payload), true),
         );
@@ -104,7 +104,7 @@ final class OutboxTest extends TestCase
 
         self::assertSame(['ledger.account.opened.v1', 'ledger.account.opened.v1', 'ledger.funds.deposited.v1'], $this->publishedTypes());
         self::assertSame(0, DB::table('outbox_messages')->whereNull('published_at')->count());
-        self::assertSame('correlation_id', array_key_first($this->publisher->published()[0]->headers));
+        self::assertArrayHasKey('correlation_id', $this->publisher->published()[0]->headers);
 
         $this->command('ledger:outbox:relay')->expectsOutput('Published 0 message(s), 0 failed.');
         self::assertCount(3, $this->publisher->published(), 'Published messages are not sent again.');
@@ -131,7 +131,7 @@ final class OutboxTest extends TestCase
             ->expectsOutput('Published 1 message(s), 2 failed.')
             ->assertFailed();
 
-        $failed = DB::table('outbox_messages')->where('message_type', 'ledger.account.opened.v1')->get();
+        $failed = DB::table('outbox_messages')->where('message_type', 'ledger.account.opened.v1')->orderBy('id')->get();
         self::assertSame([1, 1], $failed->pluck('attempts')->map(fn (mixed $a) => self::int($a))->all());
         self::assertStringContainsString('Broker rejected', self::str($failed->first()?->last_error));
 

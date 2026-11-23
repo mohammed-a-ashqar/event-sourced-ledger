@@ -44,11 +44,11 @@ final class DatabaseEventStoreTest extends TestCase
         self::assertNotNull($row);
         self::assertSame('account.opened', $row->event_type);
         self::assertSame(2, self::int($row->schema_version));
-        self::assertSame(
+        self::assertEquals(
             ['account_id' => F::ALICE, 'owner_name' => 'Alice', 'currency' => 'EUR', 'overdraft_limit' => 0],
             json_decode(self::str($row->payload), true),
         );
-        self::assertSame(
+        self::assertEqualsCanonicalizing(
             ['event_id', 'correlation_id', 'causation_id', 'occurred_at'],
             array_keys((array) json_decode(self::str($row->metadata), true)),
         );

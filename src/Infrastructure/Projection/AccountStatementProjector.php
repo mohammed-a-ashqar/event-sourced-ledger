@@ -60,7 +60,7 @@ final readonly class AccountStatementProjector implements Projector
             'balance_after' => $this->lastBalance($accountId) + $signedAmount->amount,
             'currency' => $signedAmount->currency->code,
             'reference_id' => $referenceId,
-            'description' => $description,
+            'description' => $description === null ? null : mb_substr($description, 0, 255),
             'occurred_at' => Timestamp::toColumn($envelope->metadata->occurredAt),
         ]);
     }
