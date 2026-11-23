@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ledger\Application\Transfer;
 
+use Closure;
 use Ledger\Application\Bus\ConcurrencyRetry;
 use Ledger\Domain\Account\Account;
 use Ledger\Domain\Account\AccountId;
@@ -57,17 +58,25 @@ final readonly class TransferProcessManager
 
     private function advance(Transfer $transfer): Transfer
     {
-        while (! $transfer->status()->isFinal()) {
-            match ($transfer->status()) {
-                TransferStatus::Initiated => $this->debitSource($transfer),
-                TransferStatus::SourceDebited => $this->creditDestination($transfer),
-                TransferStatus::CreditFailed => $this->compensate($transfer),
-            };
-
+        while (($step = $this->nextStep($transfer->status())) !== null) {
+            $step($transfer);
             $this->transfers->save($transfer);
         }
 
         return $transfer;
+    }
+
+    /**
+     * @return (Closure(Transfer): void)|null null once the saga reached a final state
+     */
+    private function nextStep(TransferStatus $status): ?Closure
+    {
+        return match ($status) {
+            TransferStatus::Initiated => $this->debitSource(...),
+            TransferStatus::SourceDebited => $this->creditDestination(...),
+            TransferStatus::CreditFailed => $this->compensate(...),
+            TransferStatus::Completed, TransferStatus::Rejected, TransferStatus::Compensated => null,
+        };
     }
 
     private function debitSource(Transfer $transfer): void

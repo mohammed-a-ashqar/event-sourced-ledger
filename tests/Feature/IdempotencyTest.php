@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 final class IdempotencyTest extends TestCase
@@ -17,14 +18,13 @@ final class IdempotencyTest extends TestCase
     {
         parent::setUp();
 
-        $id = $this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id');
-        self::assertIsString($id);
+        $id = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id'));
         $this->account = $id;
     }
 
     /**
      * @param  array<string, mixed>  $body
-     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     * @return TestResponse<Response>
      */
     private function postWithKey(string $uri, array $body, ?string $key = null): TestResponse
     {
@@ -32,7 +32,7 @@ final class IdempotencyTest extends TestCase
     }
 
     /**
-     * @return TestResponse<\Symfony\Component\HttpFoundation\Response>
+     * @return TestResponse<Response>
      */
     private function deposit(?string $key, int $amount = 1_000): TestResponse
     {
@@ -134,7 +134,7 @@ final class IdempotencyTest extends TestCase
     #[Test]
     public function transfers_are_idempotent_too_and_keep_their_location(): void
     {
-        $bob = $this->postJson('/api/v1/accounts', ['owner_name' => 'Bob', 'currency' => 'EUR'])->json('data.id');
+        $bob = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'Bob', 'currency' => 'EUR'])->json('data.id'));
         $this->deposit('fund', 5_000)->assertCreated();
         $body = ['source_account_id' => $this->account, 'destination_account_id' => $bob, 'amount' => 1_500, 'currency' => 'EUR'];
 

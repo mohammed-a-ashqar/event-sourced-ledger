@@ -12,13 +12,11 @@ final class AccountsApiTest extends TestCase
 {
     private function openAccount(string $owner = 'Alice', string $currency = 'EUR', int $overdraft = 0): string
     {
-        $id = $this->postJson('/api/v1/accounts', [
+        $id = self::str($this->postJson('/api/v1/accounts', [
             'owner_name' => $owner,
             'currency' => $currency,
             'overdraft_limit' => $overdraft,
-        ])->assertCreated()->json('data.id');
-
-        self::assertIsString($id);
+        ])->assertCreated()->json('data.id'));
 
         return $id;
     }
@@ -28,7 +26,7 @@ final class AccountsApiTest extends TestCase
     {
         $response = $this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR', 'overdraft_limit' => 5_000]);
 
-        $id = $response->json('data.id');
+        $id = self::str($response->json('data.id'));
         $response->assertCreated()
             ->assertHeader('Location', url('/api/v1/accounts/'.$id))
             ->assertJsonPath('data.owner_name', 'Alice')
@@ -170,7 +168,7 @@ final class AccountsApiTest extends TestCase
             ->assertCreated()
             ->assertHeader('X-Correlation-ID', 'checkout-7f3a');
 
-        $metadata = json_decode((string) DB::table('stored_events')->value('metadata'), true);
+        $metadata = json_decode(self::str(DB::table('stored_events')->value('metadata')), true);
 
         self::assertIsArray($metadata);
         self::assertSame('checkout-7f3a', $metadata['correlation_id']);

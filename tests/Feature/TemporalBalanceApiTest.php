@@ -13,7 +13,7 @@ final class TemporalBalanceApiTest extends TestCase
     public function the_balance_can_be_asked_for_any_past_moment(): void
     {
         $this->clock->setTo('2026-03-01 09:00:00');
-        $id = $this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id');
+        $id = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id'));
         $this->clock->setTo('2026-03-02 10:00:00');
         $this->postJson("/api/v1/accounts/{$id}/deposits", ['amount' => 5_000, 'currency' => 'EUR'])->assertCreated();
         $this->clock->setTo('2026-03-03 10:00:00');
@@ -39,7 +39,7 @@ final class TemporalBalanceApiTest extends TestCase
     #[Test]
     public function before_the_account_was_opened_it_did_not_exist(): void
     {
-        $id = $this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id');
+        $id = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id'));
 
         $this->getJson("/api/v1/accounts/{$id}/balance?as_of=2020-01-01T00:00:00Z")
             ->assertOk()
@@ -50,7 +50,7 @@ final class TemporalBalanceApiTest extends TestCase
     #[Test]
     public function an_invalid_moment_is_a_validation_error(): void
     {
-        $id = $this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id');
+        $id = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'Alice', 'currency' => 'EUR'])->json('data.id'));
 
         $this->getJson("/api/v1/accounts/{$id}/balance?as_of=yesterday-ish")
             ->assertStatus(422)

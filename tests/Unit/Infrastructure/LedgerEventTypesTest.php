@@ -24,6 +24,7 @@ use Ledger\Domain\Transfer\Event\TransferSourceDebited;
 use Ledger\Domain\Transfer\TransferTerms;
 use Ledger\EventSourcing\DomainEvent;
 use Ledger\EventSourcing\Serialization\SerializedEvent;
+use Ledger\Infrastructure\Database\Row;
 use Ledger\Infrastructure\Serialization\LedgerEventTypes;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -61,9 +62,9 @@ final class LedgerEventTypesTest extends TestCase
     {
         $serializer = LedgerEventTypes::serializer();
         $serialized = $serializer->serialize($event);
-        $json = json_decode(json_encode($serialized->payload, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+        // Decoded exactly as the database event store decodes a stored row.
+        $json = Row::json((object) ['payload' => json_encode($serialized->payload, JSON_THROW_ON_ERROR)], 'payload');
 
-        self::assertIsArray($json);
         self::assertEquals($event, $serializer->deserialize(new SerializedEvent($serialized->eventType, $serialized->schemaVersion, $json)));
     }
 

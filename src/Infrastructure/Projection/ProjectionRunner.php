@@ -92,7 +92,10 @@ final readonly class ProjectionRunner
         $applied = 0;
 
         do {
-            $batch = $this->db->transaction(fn (): int => $this->applyNextBatch($projector));
+            $batch = 0;
+            $this->db->transaction(function () use ($projector, &$batch): void {
+                $batch = $this->applyNextBatch($projector);
+            });
             $applied += $batch;
         } while ($batch === $this->batchSize);
 

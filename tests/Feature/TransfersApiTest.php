@@ -11,8 +11,7 @@ final class TransfersApiTest extends TestCase
 {
     private function account(string $currency = 'EUR', int $deposit = 0): string
     {
-        $id = $this->postJson('/api/v1/accounts', ['owner_name' => 'Owner', 'currency' => $currency])->json('data.id');
-        self::assertIsString($id);
+        $id = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'Owner', 'currency' => $currency])->json('data.id'));
 
         if ($deposit > 0) {
             $this->postJson("/api/v1/accounts/{$id}/deposits", ['amount' => $deposit, 'currency' => $currency])->assertCreated();
@@ -41,7 +40,7 @@ final class TransfersApiTest extends TestCase
             ->assertJsonPath('data.amount.formatted', '25.00')
             ->assertJsonPath('data.failure_reason', null);
 
-        $this->getJson('/api/v1/transfers/'.$response->json('data.id'))->assertOk()->assertJsonPath('data.status', 'completed');
+        $this->getJson('/api/v1/transfers/'.self::str($response->json('data.id')))->assertOk()->assertJsonPath('data.status', 'completed');
         $this->getJson("/api/v1/accounts/{$alice}")->assertJsonPath('data.balance.amount', 7_500);
         $this->getJson("/api/v1/accounts/{$bob}")->assertJsonPath('data.balance.amount', 2_500);
     }

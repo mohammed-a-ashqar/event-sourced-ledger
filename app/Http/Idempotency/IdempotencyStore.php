@@ -78,7 +78,14 @@ final readonly class IdempotencyStore
     private static function headers(string $json): array
     {
         $decoded = json_decode($json, true);
+        $headers = [];
 
-        return is_array($decoded) ? array_filter($decoded, 'is_string') : [];
+        foreach (is_array($decoded) ? $decoded : [] as $name => $value) {
+            if (is_string($name) && is_string($value)) {
+                $headers[$name] = $value;
+            }
+        }
+
+        return $headers;
     }
 }

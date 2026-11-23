@@ -42,8 +42,10 @@ final readonly class DatabaseEventStore implements EventStore
     {
         StreamVersions::assertConsecutive($streamId, $expectedVersion, $events);
 
+        $stored = [];
+
         try {
-            return $this->db->transaction(function () use ($streamId, $expectedVersion, $events): array {
+            $this->db->transaction(function () use ($streamId, $expectedVersion, $events, &$stored): void {
                 $this->assertStreamReached($streamId, $expectedVersion);
 
                 $stored = array_map(
@@ -54,12 +56,12 @@ final readonly class DatabaseEventStore implements EventStore
                 foreach ($this->listeners as $listener) {
                     $listener->onAppend($stored);
                 }
-
-                return $stored;
             });
         } catch (UniqueConstraintViolationException $conflict) {
             throw ConcurrencyException::versionConflict($streamId, $expectedVersion, $conflict);
         }
+
+        return $stored;
     }
 
     public function load(string $streamId, int $afterVersion = 0): array

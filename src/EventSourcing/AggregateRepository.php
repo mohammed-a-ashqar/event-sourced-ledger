@@ -7,9 +7,9 @@ namespace Ledger\EventSourcing;
 use DateTimeImmutable;
 use Ledger\EventSourcing\Clock\Clock;
 use Ledger\EventSourcing\Snapshot\Snapshot;
+use Ledger\EventSourcing\Snapshot\Snapshotable;
 use Ledger\EventSourcing\Snapshot\SnapshotPolicy;
 use Ledger\EventSourcing\Snapshot\SnapshotStore;
-use Ledger\EventSourcing\Snapshot\Snapshotable;
 
 /**
  * Loads and saves one aggregate type from/to its event streams.
@@ -90,8 +90,12 @@ final readonly class AggregateRepository
         $stored = $this->eventStore->append($streamId, $expectedVersion, $this->envelopes($streamId, $expectedVersion, $pending));
 
         $aggregate->markPendingEventsAsPersisted();
-        $this->correlation->causedBy($stored[array_key_last($stored)]->eventId());
         $this->snapshotIfDue($aggregate, $streamId, $expectedVersion);
+
+        $lastWritten = end($stored);
+        if ($lastWritten !== false) {
+            $this->correlation->causedBy($lastWritten->eventId());
+        }
 
         return $stored;
     }

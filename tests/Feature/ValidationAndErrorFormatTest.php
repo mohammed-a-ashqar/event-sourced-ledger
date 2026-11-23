@@ -23,6 +23,9 @@ final class ValidationAndErrorFormatTest extends TestCase
         yield 'owner too long' => [['owner_name' => str_repeat('a', 121), 'currency' => 'EUR'], 'owner_name'];
     }
 
+    /**
+     * @param  array<string, mixed>  $body
+     */
     #[Test]
     #[DataProvider('invalidAccounts')]
     public function invalid_account_requests_are_rejected_with_field_errors(array $body, string $field): void
@@ -47,11 +50,14 @@ final class ValidationAndErrorFormatTest extends TestCase
         yield 'missing currency' => [['amount' => 100], 'currency'];
     }
 
+    /**
+     * @param  array<string, mixed>  $body
+     */
     #[Test]
     #[DataProvider('invalidAmounts')]
     public function amounts_must_be_positive_integers_in_minor_units(array $body, string $field): void
     {
-        $id = $this->postJson('/api/v1/accounts', ['owner_name' => 'A', 'currency' => 'EUR'])->json('data.id');
+        $id = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'A', 'currency' => 'EUR'])->json('data.id'));
 
         $this->postJson("/api/v1/accounts/{$id}/deposits", $body)
             ->assertStatus(422)
@@ -73,7 +79,7 @@ final class ValidationAndErrorFormatTest extends TestCase
     #[Test]
     public function statement_paging_parameters_are_validated(): void
     {
-        $id = $this->postJson('/api/v1/accounts', ['owner_name' => 'A', 'currency' => 'EUR'])->json('data.id');
+        $id = self::str($this->postJson('/api/v1/accounts', ['owner_name' => 'A', 'currency' => 'EUR'])->json('data.id'));
 
         $this->getJson("/api/v1/accounts/{$id}/statement?limit=500")
             ->assertStatus(422)

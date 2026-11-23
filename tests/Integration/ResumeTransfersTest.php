@@ -48,14 +48,14 @@ final class ResumeTransfersTest extends TestCase
         $this->crashAfterSourceDebit();
         $this->clock->advance('+5 minutes');
 
-        $this->artisan('ledger:transfers:resume', ['--older-than' => 60])
+        $this->command('ledger:transfers:resume', ['--older-than' => 60])
             ->expectsOutput(F::TRANSFER.' -> completed')
             ->expectsOutput('Resumed 1 of 1 stalled transfer(s).')
             ->assertSuccessful();
 
         self::assertSame('completed', DB::table('transfers')->value('status'));
-        self::assertSame(250, (int) DB::table('account_balances')->where('account_id', F::BOB)->value('balance'));
-        self::assertSame(750, (int) DB::table('account_balances')->where('account_id', F::ALICE)->value('balance'));
+        self::assertSame(250, self::int(DB::table('account_balances')->where('account_id', F::BOB)->value('balance')));
+        self::assertSame(750, self::int(DB::table('account_balances')->where('account_id', F::ALICE)->value('balance')));
     }
 
     #[Test]
@@ -64,7 +64,7 @@ final class ResumeTransfersTest extends TestCase
         $this->crashAfterSourceDebit();
         $this->clock->advance('+10 seconds');
 
-        $this->artisan('ledger:transfers:resume', ['--older-than' => 60])
+        $this->command('ledger:transfers:resume', ['--older-than' => 60])
             ->expectsOutput('Resumed 0 of 0 stalled transfer(s).')
             ->assertSuccessful();
 

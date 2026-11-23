@@ -21,7 +21,6 @@ use Ledger\Application\Account\WithdrawMoneyHandler;
 use Ledger\Application\Bus\CommandBus;
 use Ledger\Application\Bus\ConcurrencyRetry;
 use Ledger\Application\Bus\CorrelateCommand;
-use Ledger\Application\Bus\Middleware;
 use Ledger\Application\Bus\RetryOnConcurrencyConflict;
 use Ledger\Application\Bus\SimpleCommandBus;
 use Ledger\Application\Messaging\MessagePublisher;
@@ -63,18 +62,6 @@ use UnexpectedValueException;
  */
 final class LedgerServiceProvider extends ServiceProvider
 {
-    /**
-     * @var array<class-string, class-string>
-     */
-    private const HANDLERS = [
-        OpenAccount::class => OpenAccountHandler::class,
-        DepositMoney::class => DepositMoneyHandler::class,
-        WithdrawMoney::class => WithdrawMoneyHandler::class,
-        FreezeAccount::class => FreezeAccountHandler::class,
-        UnfreezeAccount::class => UnfreezeAccountHandler::class,
-        TransferMoney::class => TransferMoneyHandler::class,
-    ];
-
     public function register(): void
     {
         $this->app->singleton(Clock::class, SystemClock::class);
@@ -166,21 +153,24 @@ final class LedgerServiceProvider extends ServiceProvider
 
     private function registerCommandBus(): void
     {
-        $this->app->scoped(CommandBus::class, function (Application $app): CommandBus {
-            $handlers = [];
+        $this->app->scoped(CommandBus::class, static function (Application $app): CommandBus {
+            // Handlers are resolved lazily, so dispatching one command builds only what it needs.
+            $handlers = [
+                OpenAccount::class => static fn (OpenAccount $c) => $app->make(OpenAccountHandler::class)($c),
+                DepositMoney::class => static fn (DepositMoney $c) => $app->make(DepositMoneyHandler::class)($c),
+                WithdrawMoney::class => static fn (WithdrawMoney $c) => $app->make(WithdrawMoneyHandler::class)($c),
+                FreezeAccount::class => static fn (FreezeAccount $c) => $app->make(FreezeAccountHandler::class)($c),
+                UnfreezeAccount::class => static fn (UnfreezeAccount $c) => $app->make(UnfreezeAccountHandler::class)($c),
+                TransferMoney::class => static fn (TransferMoney $c) => $app->make(TransferMoneyHandler::class)($c),
+            ];
 
-            foreach (self::HANDLERS as $command => $handler) {
-                $handlers[$command] = static function (object $message) use ($app, $handler): void {
-                    $app->make($handler)($message);
-                };
+            $middleware = [$app->make(CorrelateCommand::class)];
+
+            if (config('ledger.projections.sync') === true) {
+                $middleware[] = $app->make(ProjectAfterCommand::class);
             }
 
-            /** @var list<Middleware> $middleware */
-            $middleware = array_values(array_filter([
-                $app->make(CorrelateCommand::class),
-                config('ledger.projections.sync') === true ? $app->make(ProjectAfterCommand::class) : null,
-                $app->make(RetryOnConcurrencyConflict::class),
-            ]));
+            $middleware[] = $app->make(RetryOnConcurrencyConflict::class);
 
             return new SimpleCommandBus($handlers, $middleware);
         });

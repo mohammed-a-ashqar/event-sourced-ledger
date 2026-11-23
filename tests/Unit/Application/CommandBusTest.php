@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Application;
 
 use ArrayObject;
+use DomainException;
 use Ledger\Application\Bus\ConcurrencyRetry;
 use Ledger\Application\Bus\CorrelateCommand;
 use Ledger\Application\Bus\Middleware;
@@ -107,9 +108,9 @@ final class CommandBusTest extends TestCase
             $retry->run(function () use (&$attempts): void {
                 $attempts++;
 
-                throw new \DomainException('business rule');
+                throw new DomainException('business rule');
             });
-        } catch (\DomainException) {
+        } catch (DomainException) {
             self::assertSame(1, $attempts);
         }
     }

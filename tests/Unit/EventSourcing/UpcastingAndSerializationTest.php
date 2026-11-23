@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit\EventSourcing;
 
+use Closure;
 use InvalidArgumentException;
 use Ledger\Domain\Account\Event\AccountOpened;
 use Ledger\Domain\Account\Event\MoneyDeposited;
 use Ledger\EventSourcing\DomainEvent;
+use Ledger\EventSourcing\Payload;
 use Ledger\EventSourcing\Serialization\EventSerializer;
 use Ledger\EventSourcing\Serialization\EventTypeRegistry;
 use Ledger\EventSourcing\Serialization\SerializedEvent;
@@ -21,11 +23,17 @@ use Tests\Support\Fixtures as F;
 
 final class UpcastingAndSerializationTest extends TestCase
 {
+    /**
+     * @param  callable(array<string, mixed>): array<string, mixed>  $change
+     */
     private static function upcaster(string $type, int $from, callable $change): Upcaster
     {
         return new class($type, $from, $change(...)) implements Upcaster
         {
-            public function __construct(private string $type, private int $from, private \Closure $change) {}
+            /**
+             * @param  Closure(array<string, mixed>): array<string, mixed>  $change
+             */
+            public function __construct(private string $type, private int $from, private Closure $change) {}
 
             public function eventType(): string
             {
@@ -49,7 +57,7 @@ final class UpcastingAndSerializationTest extends TestCase
     {
         // Registered out of order on purpose: the chain is keyed by version.
         $chain = new UpcasterChain([
-            self::upcaster('thing', 2, fn (array $p) => ['trail' => $p['trail'].'>v3']),
+            self::upcaster('thing', 2, fn (array $p) => ['trail' => Payload::string($p, 'trail').'>v3']),
             self::upcaster('thing', 1, fn (array $p) => ['trail' => 'v1>v2']),
         ]);
 

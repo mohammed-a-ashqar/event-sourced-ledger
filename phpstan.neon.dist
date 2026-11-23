@@ -1,0 +1,17 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/phpstan/phpstan-phpunit/extension.neon
+
+parameters:
+    level: max
+    paths:
+        - app
+        - src
+        - bootstrap/app.php
+        - config/ledger.php
+        - database
+        - routes
+        - tests
+    tmpDir: storage/framework/cache/phpstan
+    # Stores and repositories are stateful: never assume two calls return the same value.
+    rememberPossiblyImpureFunctionValues: false

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ledger\Domain\Account;
 
 use DateTimeImmutable;
+use Ledger\Domain\Account\Exception\AccountNotFound;
 
 /**
  * Persistence port for the Account aggregate.

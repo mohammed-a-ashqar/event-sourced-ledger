@@ -50,7 +50,7 @@ final class ProjectionTest extends TestCase
     }
 
     /**
-     * @return array<string, list<array<string, mixed>>>
+     * @return array<string, array<int, array<array-key, mixed>>>
      */
     private function snapshotOfReadModels(): array
     {
@@ -147,7 +147,7 @@ final class ProjectionTest extends TestCase
         $journal = array_column($this->app->make(TrialBalance::class)->compute()['accounts'], 'balance', 'ledger_account');
 
         foreach (DB::table('account_balances')->get() as $account) {
-            self::assertSame((int) $account->balance, $journal['customer:'.$account->account_id] ?? 0);
+            self::assertSame(self::int($account->balance), $journal['customer:'.self::str($account->account_id)] ?? 0);
         }
     }
 
@@ -167,7 +167,7 @@ final class ProjectionTest extends TestCase
     public function checkpoints_track_the_last_applied_position(): void
     {
         $this->recordSomeHistory();
-        $lastPosition = (int) DB::table('stored_events')->max('position');
+        $lastPosition = self::int(DB::table('stored_events')->max('position'));
 
         foreach ($this->runner()->names() as $name) {
             self::assertSame($lastPosition, $this->runner()->checkpoint($name));
@@ -201,14 +201,14 @@ final class ProjectionTest extends TestCase
         DB::table('transfers')->delete();
         DB::table('journal_lines')->delete();
 
-        $this->artisan('ledger:projections:rebuild', ['projection' => ['transfers']])
+        $this->command('ledger:projections:rebuild', ['projection' => ['transfers']])
             ->expectsOutputToContain('transfers')
             ->assertSuccessful();
 
         self::assertSame(2, DB::table('transfers')->count());
         self::assertSame(0, DB::table('journal_lines')->count());
 
-        $this->artisan('ledger:projections:rebuild')->assertSuccessful();
+        $this->command('ledger:projections:rebuild')->assertSuccessful();
 
         self::assertEquals($before, $this->snapshotOfReadModels());
     }
@@ -216,7 +216,7 @@ final class ProjectionTest extends TestCase
     #[Test]
     public function the_rebuild_command_rejects_unknown_projections(): void
     {
-        $this->artisan('ledger:projections:rebuild', ['projection' => ['nope']])
+        $this->command('ledger:projections:rebuild', ['projection' => ['nope']])
             ->expectsOutputToContain('Unknown projection "nope"')
             ->assertFailed();
     }
@@ -232,9 +232,9 @@ final class ProjectionTest extends TestCase
 
         self::assertSame(0, DB::table('account_balances')->count(), 'Nothing is projected until a worker runs.');
 
-        $this->artisan('ledger:projections:run')->assertSuccessful();
+        $this->command('ledger:projections:run')->assertSuccessful();
 
-        self::assertSame(500, (int) DB::table('account_balances')->value('balance'));
+        self::assertSame(500, self::int(DB::table('account_balances')->value('balance')));
     }
 
     #[Test]
@@ -254,7 +254,7 @@ final class ProjectionTest extends TestCase
         );
 
         self::assertSame(8, $smallBatches->rebuild('account_statement'));
-        self::assertSame((int) DB::table('stored_events')->max('position'), $smallBatches->checkpoint('account_statement'));
-        self::assertSame(70, (int) DB::table('account_statement_lines')->orderByDesc('position')->value('balance_after'));
+        self::assertSame(self::int(DB::table('stored_events')->max('position')), $smallBatches->checkpoint('account_statement'));
+        self::assertSame(70, self::int(DB::table('account_statement_lines')->orderByDesc('position')->value('balance_after')));
     }
 }

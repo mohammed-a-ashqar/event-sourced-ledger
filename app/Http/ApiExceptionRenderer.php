@@ -32,12 +32,26 @@ final readonly class ApiExceptionRenderer
     public function render(Throwable $e): JsonResponse
     {
         return match (true) {
-            $e instanceof ValidationException => ApiError::response(422, 'validation_failed', 'The request is invalid.', $e->errors()),
+            $e instanceof ValidationException => ApiError::response(422, 'validation_failed', 'The request is invalid.', self::fieldErrors($e)),
             $e instanceof BusinessRuleViolation => ApiError::response(self::STATUS_BY_CODE[$e->errorCode()] ?? 422, $e->errorCode(), $e->getMessage()),
             $e instanceof ConcurrencyException => ApiError::response(409, 'concurrency_conflict', 'The resource was modified concurrently; retry the request.'),
             $e instanceof HttpExceptionInterface => $this->httpError($e),
             default => ApiError::response(500, 'internal_error', 'An unexpected error occurred.', $this->debug ? ['exception' => $e::class, 'detail' => $e->getMessage()] : []),
         };
+    }
+
+    /**
+     * @return array<string, mixed> field => list of messages
+     */
+    private static function fieldErrors(ValidationException $e): array
+    {
+        $errors = [];
+
+        foreach ($e->errors() as $field => $messages) {
+            $errors[(string) $field] = $messages;
+        }
+
+        return $errors;
     }
 
     private function httpError(HttpExceptionInterface $e): JsonResponse

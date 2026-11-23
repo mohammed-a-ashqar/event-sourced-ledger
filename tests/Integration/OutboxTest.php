@@ -67,7 +67,7 @@ final class OutboxTest extends TestCase
         self::assertSame($deposit->eventId(), $message->message_id);
         self::assertSame(
             ['account_id' => F::ALICE, 'transaction_id' => F::TRANSACTION, 'amount' => 1_000, 'currency' => 'EUR'],
-            json_decode((string) $message->payload, true),
+            json_decode(self::str($message->payload), true),
         );
     }
 
@@ -98,7 +98,7 @@ final class OutboxTest extends TestCase
     {
         $this->openAndFund();
 
-        $this->artisan('ledger:outbox:relay')
+        $this->command('ledger:outbox:relay')
             ->expectsOutput('Published 3 message(s), 0 failed.')
             ->assertSuccessful();
 
@@ -106,7 +106,7 @@ final class OutboxTest extends TestCase
         self::assertSame(0, DB::table('outbox_messages')->whereNull('published_at')->count());
         self::assertSame('correlation_id', array_key_first($this->publisher->published()[0]->headers));
 
-        $this->artisan('ledger:outbox:relay')->expectsOutput('Published 0 message(s), 0 failed.');
+        $this->command('ledger:outbox:relay')->expectsOutput('Published 0 message(s), 0 failed.');
         self::assertCount(3, $this->publisher->published(), 'Published messages are not sent again.');
     }
 
@@ -127,16 +127,16 @@ final class OutboxTest extends TestCase
         $this->openAndFund();
         $this->publisher->failFor('ledger.account.opened.v1');
 
-        $this->artisan('ledger:outbox:relay')
+        $this->command('ledger:outbox:relay')
             ->expectsOutput('Published 1 message(s), 2 failed.')
             ->assertFailed();
 
         $failed = DB::table('outbox_messages')->where('message_type', 'ledger.account.opened.v1')->get();
-        self::assertSame([1, 1], $failed->pluck('attempts')->map(fn ($a) => (int) $a)->all());
-        self::assertStringContainsString('Broker rejected', (string) $failed[0]->last_error);
+        self::assertSame([1, 1], $failed->pluck('attempts')->map(fn (mixed $a) => self::int($a))->all());
+        self::assertStringContainsString('Broker rejected', self::str($failed->first()?->last_error));
 
         $this->publisher->recover();
-        $this->artisan('ledger:outbox:relay')->expectsOutput('Published 2 message(s), 0 failed.');
+        $this->command('ledger:outbox:relay')->expectsOutput('Published 2 message(s), 0 failed.');
 
         self::assertSame(0, DB::table('outbox_messages')->whereNull('published_at')->count());
         self::assertNull(DB::table('outbox_messages')->value('last_error'));
@@ -156,13 +156,13 @@ final class OutboxTest extends TestCase
         $third = $relay->relay(10);
 
         self::assertSame(0, $third->published + $third->failed, 'The parked message is no longer picked up.');
-        self::assertSame(2, (int) DB::table('outbox_messages')->where('message_type', 'ledger.funds.deposited.v1')->value('attempts'));
+        self::assertSame(2, self::int(DB::table('outbox_messages')->where('message_type', 'ledger.funds.deposited.v1')->value('attempts')));
     }
 
     #[Test]
     public function the_limit_option_is_validated(): void
     {
-        $this->artisan('ledger:outbox:relay', ['--limit' => 'abc'])
+        $this->command('ledger:outbox:relay', ['--limit' => 'abc'])
             ->expectsOutput('--limit must be a positive integer.')
             ->assertExitCode(2);
     }

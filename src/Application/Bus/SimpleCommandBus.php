@@ -12,7 +12,7 @@ namespace Ledger\Application\Bus;
 final readonly class SimpleCommandBus implements CommandBus
 {
     /**
-     * @param  array<class-string, callable(object): void>  $handlers
+     * @param  array<class-string, callable>  $handlers  command class => handler receiving an instance of it
      * @param  list<Middleware>  $middleware
      */
     public function __construct(

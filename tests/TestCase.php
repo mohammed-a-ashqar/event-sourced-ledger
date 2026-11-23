@@ -6,6 +6,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Testing\PendingCommand;
 use Ledger\Application\Bus\CommandBus;
 use Ledger\Application\Messaging\MessagePublisher;
 use Ledger\EventSourcing\Clock\Clock;
@@ -38,5 +39,33 @@ abstract class TestCase extends BaseTestCase
     protected function bus(): CommandBus
     {
         return $this->app->make(CommandBus::class);
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    protected function command(string $command, array $parameters = []): PendingCommand
+    {
+        $pending = $this->artisan($command, $parameters);
+        self::assertInstanceOf(PendingCommand::class, $pending);
+
+        return $pending;
+    }
+
+    /**
+     * Drivers return numbers as int or numeric string; tests compare ints.
+     */
+    protected static function int(mixed $value): int
+    {
+        self::assertIsNumeric($value);
+
+        return (int) $value;
+    }
+
+    protected static function str(mixed $value): string
+    {
+        self::assertIsString($value);
+
+        return $value;
     }
 }
