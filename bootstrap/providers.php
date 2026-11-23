@@ -1,7 +1,9 @@
 <?php
 
-use App\Providers\AppServiceProvider;
+declare(strict_types=1);
+
+use App\Providers\LedgerServiceProvider;
 
 return [
-    AppServiceProvider::class,
+    LedgerServiceProvider::class,
 ];
