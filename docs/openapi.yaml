@@ -1,0 +1,471 @@
+openapi: 3.1.0
+info:
+  title: Event-Sourced Ledger API
+  version: 1.0.0
+  summary: Double-entry, multi-currency wallets built on event sourcing and CQRS.
+  description: |
+    All amounts are integers in **minor units** of their currency (cents for EUR,
+    yen for JPY, fils for KWD). There are no floats anywhere in the API.
+
+    Commands (POST) are applied through the event-sourced write model; responses
+    are read back from projections, which are updated synchronously after each
+    command.
+
+    Every POST accepts an optional `Idempotency-Key` header: repeating a request
+    with the same key and the same body replays the original response (with
+    `Idempotent-Replayed: true`) without executing it again; the same key with a
+    different body is rejected with `409 idempotency_key_reused`.
+
+    Errors always use the same envelope:
+    `{"error": {"code": "...", "message": "...", "details": {...}}}`.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server (php artisan serve)
+
+tags:
+  - name: Accounts
+  - name: Transfers
+  - name: Ledger
+
+paths:
+  /accounts:
+    post:
+      tags: [Accounts]
+      operationId: openAccount
+      summary: Open an account
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner_name, currency]
+              properties:
+                owner_name: { type: string, minLength: 1, maxLength: 120, examples: [Alice] }
+                currency: { $ref: '#/components/schemas/CurrencyCode' }
+                overdraft_limit:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000000000000000
+                  default: 0
+                  description: How far below zero the balance may go, in minor units.
+      responses:
+        '201':
+          description: Account opened.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountEnvelope' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /accounts/{accountId}:
+    get:
+      tags: [Accounts]
+      operationId: getAccount
+      summary: Current balance and status of an account
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: The account summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /accounts/{accountId}/balance:
+    get:
+      tags: [Accounts]
+      operationId: getBalance
+      summary: Balance now, or at any past moment (temporal query)
+      description: |
+        Without `as_of`, the projected balance is returned. With `as_of`, the
+        account is rebuilt by replaying its events up to that moment
+        (inclusive), so any point in the past can be queried.
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: as_of
+          in: query
+          required: false
+          schema: { type: string, format: date-time, examples: ['2026-03-02T12:00:00Z'] }
+      responses:
+        '200':
+          description: The balance at the requested moment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [account_id, as_of, balance]
+                    properties:
+                      account_id: { type: string, format: uuid }
+                      as_of: { type: [string, 'null'], description: 'UTC moment queried; null for the current balance.' }
+                      existed: { type: boolean, description: 'Only with as_of: false if the account was opened later.' }
+                      balance:
+                        oneOf:
+                          - $ref: '#/components/schemas/Money'
+                          - type: 'null'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /accounts/{accountId}/statement:
+    get:
+      tags: [Accounts]
+      operationId: getStatement
+      summary: Money movements with running balance (keyset pagination)
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: after
+          in: query
+          description: Return lines after this position (use `meta.next_after` of the previous page).
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: A page of statement lines.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/StatementLine' }
+                  meta:
+                    type: object
+                    properties:
+                      next_after: { type: [integer, 'null'] }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /accounts/{accountId}/deposits:
+    post:
+      tags: [Accounts]
+      operationId: deposit
+      summary: Deposit money
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody: { $ref: '#/components/requestBodies/MoneyMovement' }
+      responses:
+        '201': { $ref: '#/components/responses/MovementRecorded' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /accounts/{accountId}/withdrawals:
+    post:
+      tags: [Accounts]
+      operationId: withdraw
+      summary: Withdraw money (balance plus overdraft must cover it)
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody: { $ref: '#/components/requestBodies/MoneyMovement' }
+      responses:
+        '201': { $ref: '#/components/responses/MovementRecorded' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /accounts/{accountId}/freeze:
+    post:
+      tags: [Accounts]
+      operationId: freezeAccount
+      summary: Freeze an account (no more debits or credits)
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 255 }
+      responses:
+        '200':
+          description: Account frozen.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /accounts/{accountId}/unfreeze:
+    post:
+      tags: [Accounts]
+      operationId: unfreezeAccount
+      summary: Unfreeze an account
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '200':
+          description: Account active again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /transfers:
+    post:
+      tags: [Transfers]
+      operationId: transferMoney
+      summary: Transfer money between two accounts
+      description: |
+        Runs the transfer saga: debit the source, credit the destination, and
+        reverse the debit if the credit is refused. Every recorded transfer
+        answers `201`; the outcome is in `status`:
+        `completed`, `rejected` (source refused, nothing moved) or
+        `compensated` (destination refused, source refunded).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_account_id, destination_account_id, amount, currency]
+              properties:
+                source_account_id: { type: string, format: uuid }
+                destination_account_id: { type: string, format: uuid }
+                amount: { $ref: '#/components/schemas/PositiveAmount' }
+                currency: { $ref: '#/components/schemas/CurrencyCode' }
+      responses:
+        '201':
+          description: Transfer recorded (see status for the outcome).
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /transfers/{transferId}:
+    get:
+      tags: [Transfers]
+      operationId: getTransfer
+      summary: State of a transfer
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The transfer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferEnvelope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /ledger/trial-balance:
+    get:
+      tags: [Ledger]
+      operationId: getTrialBalance
+      summary: Debits and credits per ledger account and per currency
+      responses:
+        '200':
+          description: The trial balance computed from the general journal.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [accounts, currencies]
+                    properties:
+                      accounts:
+                        type: array
+                        items:
+                          type: object
+                          required: [ledger_account, currency, debits, credits, balance]
+                          properties:
+                            ledger_account: { type: string, examples: ['customer:3f2504e0-4f89-41d3-9a0c-0305e82c3301', 'system:cash:EUR'] }
+                            currency: { $ref: '#/components/schemas/CurrencyCode' }
+                            debits: { type: integer }
+                            credits: { type: integer }
+                            balance: { type: integer, description: credits minus debits }
+                      currencies:
+                        type: array
+                        items:
+                          type: object
+                          required: [currency, debits, credits, balanced]
+                          properties:
+                            currency: { $ref: '#/components/schemas/CurrencyCode' }
+                            debits: { type: integer }
+                            credits: { type: integer }
+                            balanced: { type: boolean }
+
+components:
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Any 1-255 visible ASCII characters; remembered for 24 hours.
+      schema: { type: string, minLength: 1, maxLength: 255 }
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Stored as correlation_id in the metadata of every event written; echoed back.
+      schema: { type: string, pattern: '^[A-Za-z0-9._:-]{1,100}$' }
+
+  requestBodies:
+    MoneyMovement:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [amount, currency]
+            properties:
+              amount: { $ref: '#/components/schemas/PositiveAmount' }
+              currency: { $ref: '#/components/schemas/CurrencyCode' }
+              reference: { type: [string, 'null'], maxLength: 140 }
+
+  responses:
+    MovementRecorded:
+      description: Movement recorded.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                type: object
+                required: [transaction_id, account]
+                properties:
+                  transaction_id: { type: string, format: uuid }
+                  account: { $ref: '#/components/schemas/Account' }
+    NotFound:
+      description: Unknown account, transfer or route.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: |
+        State conflict: `account_frozen`, `account_not_frozen`, `account_already_exists`,
+        `concurrency_conflict`, `idempotency_key_reused` or `idempotency_request_in_progress`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: |
+        `validation_failed` (field errors in `details`) or a business rule such as
+        `insufficient_funds`, `currency_mismatch`, `invalid_amount`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    CurrencyCode:
+      type: string
+      description: Supported ISO 4217 code.
+      enum: [AED, AUD, BHD, CAD, CHF, CNY, CZK, DKK, EGP, EUR, GBP, HKD, ILS, INR, JOD, JPY, KRW, KWD, MAD, NOK, NZD, OMR, PLN, QAR, SAR, SEK, SGD, TND, TRY, USD, ZAR]
+    PositiveAmount:
+      type: integer
+      minimum: 1
+      maximum: 1000000000000000
+      description: Amount in minor units.
+    Money:
+      type: object
+      required: [amount, currency, formatted]
+      properties:
+        amount: { type: integer, description: 'Minor units, exact.' }
+        currency: { $ref: '#/components/schemas/CurrencyCode' }
+        formatted: { type: string, description: 'Decimal rendering for display, e.g. "12.50".' }
+    Account:
+      type: object
+      required: [id, owner_name, status, balance, overdraft_limit, available, version, opened_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        owner_name: { type: string }
+        status: { type: string, enum: [active, frozen] }
+        balance: { $ref: '#/components/schemas/Money' }
+        overdraft_limit: { $ref: '#/components/schemas/Money' }
+        available: { $ref: '#/components/schemas/Money' }
+        version: { type: integer, description: Version of the account event stream. }
+        opened_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AccountEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Account' }
+    StatementLine:
+      type: object
+      required: [position, type, amount, balance_after, reference_id, description, occurred_at]
+      properties:
+        position: { type: integer }
+        type: { type: string, enum: [deposit, withdrawal, transfer_out, transfer_in, transfer_reversal] }
+        amount: { $ref: '#/components/schemas/Money' }
+        balance_after: { $ref: '#/components/schemas/Money' }
+        reference_id: { type: string, format: uuid, description: Transaction or transfer id. }
+        description: { type: [string, 'null'] }
+        occurred_at: { type: string, format: date-time }
+    Transfer:
+      type: object
+      required: [id, source_account_id, destination_account_id, amount, status, failure_reason, initiated_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        source_account_id: { type: string, format: uuid }
+        destination_account_id: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        status: { type: string, enum: [initiated, source_debited, completed, rejected, credit_failed, compensated] }
+        failure_reason: { type: [string, 'null'] }
+        initiated_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    TransferEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Transfer' }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [insufficient_funds] }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: true
