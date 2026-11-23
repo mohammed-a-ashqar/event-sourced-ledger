@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Http\Middleware\EnforceIdempotency;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
@@ -86,6 +87,10 @@ final class LedgerServiceProvider extends ServiceProvider
         $this->registerReadSide();
         $this->registerMessaging();
         $this->registerCommandBus();
+
+        $this->app->when(EnforceIdempotency::class)
+            ->needs('$ttlHours')
+            ->give(fn (): int => $this->configInt('ledger.idempotency.ttl_hours'));
     }
 
     private function registerEventStore(): void
