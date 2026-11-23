@@ -1,0 +1,21 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Ledger\Domain\Account\Exception;
+
+use Ledger\Domain\Account\AccountId;
+use Ledger\Domain\Shared\BusinessRuleViolation;
+
+final class AccountAlreadyExists extends BusinessRuleViolation
+{
+    public static function withId(AccountId $id): self
+    {
+        return new self(sprintf('Account %s already exists.', $id));
+    }
+
+    public function errorCode(): string
+    {
+        return 'account_already_exists';
+    }
+}
