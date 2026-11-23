@@ -563,3 +563,7 @@ A few smaller ones:
   gateway that handles identity.
 - **The HTTP API assumes synchronous projections** to return the created resource. In
   asynchronous mode, clients would poll the `GET` endpoints.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
